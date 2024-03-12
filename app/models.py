@@ -84,5 +84,32 @@ class Student(db.Model):
             'id': self.id,
             'student_reg_no': str(self.student_reg_no),
             'student_name': str(self.student_name),
-            'course_id': str(self.course_id)
+            'course_id': int(self.course_id)
+        }
+    
+# results table
+class Predictions(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_reg_no = db.Column(db.String(20), db.ForeignKey("student.student_reg_no"), nullable=False)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    cat_1 = db.Column(db.Float, nullable=False)
+    cat_2 = db.Column(db.Float, nullable=False)
+    assignment = db.Column(db.Float, nullable=False)
+    project = db.Column(db.Float, nullable=False)
+    expected_exam = db.Column(db.Float, nullable=False)
+    expected_total = db.Column(db.Float, nullable=False)
+    expected_grade = db.Column(db.String, nullable=False)
+
+    def serialize(self):
+        return {
+            'id': self.id,
+            'student_reg_no': str(self.student_reg_no),
+            'course_id': int(self.course_id),
+            'cat_1': float(self.cat_1),
+            'cat_2': float(self.cat_2),
+            'assignment': float(self.assignment),
+            'project': float(self.project),
+            'expected_exam': float(self.expected_exam),
+            'expected_total': float(self.expected_total),
+            'expected_grade': str(self.expected_grade)
         }
