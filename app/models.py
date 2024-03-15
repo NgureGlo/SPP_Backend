@@ -77,21 +77,21 @@ class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_reg_no = db.Column(db.String(20), unique=True, nullable=False)
     student_name = db.Column(db.String(100), nullable=False)
-    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    course_code = db.Column(db.Integer, db.ForeignKey('course.course_code'), nullable=False)
 
     def serialize(self):
         return {
             'id': self.id,
             'student_reg_no': str(self.student_reg_no),
             'student_name': str(self.student_name),
-            'course_id': int(self.course_id)
+            'course_code': str(self.course_code)
         }
     
 # results table
 class Predictions(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_reg_no = db.Column(db.String(20), db.ForeignKey("student.student_reg_no"), nullable=False)
-    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    course_code = db.Column(db.String, db.ForeignKey('course.course_code'), nullable=False)
     cat_1 = db.Column(db.Float, nullable=False)
     cat_2 = db.Column(db.Float, nullable=False)
     assignment = db.Column(db.Float, nullable=False)
@@ -104,7 +104,7 @@ class Predictions(db.Model):
         return {
             'id': self.id,
             'student_reg_no': str(self.student_reg_no),
-            'course_id': int(self.course_id),
+            'course_code': str(self.course_code),
             'cat_1': float(self.cat_1),
             'cat_2': float(self.cat_2),
             'assignment': float(self.assignment),

@@ -154,7 +154,7 @@ def update_user(user_id):
         return jsonify({'error': str(e)})
     
 
-# define endpoints for viewing a course
+# define endpoints for viewing all courses
 @app.route('/courses', methods=['GET'])
 def courses():
     courses = Course.query.all()
@@ -162,11 +162,19 @@ def courses():
     return jsonify({'data': courses_json})
 
 
+# define endpoints for viewing courses added by a specific lecturer
+@app.route('/lecturer_courses/<int:user_id>', methods=['GET'])
+def lecturer_courses(user_id):
+    courses = Course.query.filter(Course.added_by == user_id)
+    courses_json = [Course.serialize(record) for record in courses]
+    return jsonify({'data': courses_json})
+
+
+
 # define endpoints for adding a course
 @app.route('/add_course', methods=['GET', 'POST'])
 def add_course():
     data = request.json
-    print (str(data))
 
     course_code = str(data['course_code'])
     course_level = str(data['course_level'])
@@ -208,10 +216,10 @@ def add_student():
 
     student_reg_no = str(data['student_reg_no'])
     student_name = str(data['student_name'])
-    course_id = str(data['course_id'])
+    course_code = str(data['course_code'])
     
-    if student_reg_no and student_name and course_id:
-        student = Student(student_reg_no=student_reg_no, student_name=student_name, course_id=course_id)
+    if student_reg_no and student_name and course_code:
+        student = Student(student_reg_no=student_reg_no, student_name=student_name, course_code=course_code)
         db.session.add(student)
         db.session.commit()
 
@@ -222,7 +230,7 @@ def add_student():
         return jsonify({'message': 'Unable to add Student. Please fill in all sections.'})
 
 
-# define endpoints for viewing a student
+# define endpoints for viewing students
 @app.route('/view_students', methods=['GET'])
 def view_students():
     student= Student.query.all()
@@ -233,9 +241,16 @@ def view_students():
 # define endpoints for viewing a student added by a specific lecturer
 @app.route('/lecturer_students/<int:lecturer_id>', methods=['GET'])
 def lecturer_students(lecturer_id):
-    student= Student.query.filter(Student.lecturer == lecturer_id)
-    student_json = [Student.serialize(record) for record in student]
-    return jsonify({'data': student_json})
+
+    courses = Course.query.filter(Course.added_by == lecturer_id)
+    students = []
+
+    for course in courses:
+        stud = Student.query.filter(Student.course_code == course.course_code)
+        studs = [Student.serialize(record) for record in stud]
+        students += studs
+
+    return jsonify({'data': students})
 
 
 # define endpoints for deleting a student
@@ -260,6 +275,7 @@ def course_students(course_id):
     return jsonify({'data': student_json})
 
 
+
 # define endpoints for prediction
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -268,20 +284,26 @@ def predict():
         data = request.json
 
         student_reg_no = str(data['student_reg_no'])
-        course_id = int(data['course_id'])
-        assignments_viewed = int(data['assignments_viewed'])
-        assignments_submitted =int(data['assignments_submitted'])
-        quiz_started = int(data['quiz_started'])
-        quiz_submitted = int(data['quiz_submitted'])
-        quiz_reviewed = int(data['quiz_reviewed'])
-        quiz_viewed = int(data['quiz_viewed'])
-        forums_viewed = int(data['forums_viewed'])
-        page_views = int(data['page_views'])
-        resources_viewed = int(data['resources_viewed'])
+        course_code = str(data['course_code'])
+        assignments_viewed = 0
+        assignments_submitted = 0
+        quiz_started = 0
+        quiz_submitted = 0
+        quiz_reviewed = 0
+        quiz_viewed = 0
+        forums_viewed = 0
+        page_views = 0
+        resources_viewed = 0
         cat_1 = float(data['cat_1'])
         cat_2 = float(data['cat_2'])
         assignment = float(data['assignment'])
         project = float(data['project'])
+
+        courses = Course.query.filter(Course.course_code == course_code)
+        course_list = [Course.serialize(record) for record in courses]
+
+        if not course_list:
+            return jsonify({'message': 'Course not in records'})
 
         students = Student.query.filter(Student.student_reg_no == student_reg_no)
         student_list = [Student.serialize(record) for record in students]
@@ -291,7 +313,7 @@ def predict():
         
         first_student = student_list[0]
 
-        if first_student["course_id"] != course_id:
+        if first_student["course_code"] != course_code:
             return jsonify({'message':'Student not registered in this course'})
 
         expected_exam = loaded_model.predict([[
@@ -313,7 +335,7 @@ def predict():
         else:
             expected_grade = 'E'
 
-        predictions = Predictions(student_reg_no=student_reg_no, course_id=course_id, cat_1=cat_1, cat_2=cat_2, assignment=assignment, project=project, expected_exam=expected_exam, expected_total=expected_total, expected_grade=expected_grade)
+        predictions = Predictions(student_reg_no=student_reg_no, course_code=course_code, cat_1=cat_1, cat_2=cat_2, assignment=assignment, project=project, expected_exam=expected_exam, expected_total=expected_total, expected_grade=expected_grade)
         db.session.add(predictions)
         db.session.commit()
 
@@ -322,7 +344,7 @@ def predict():
         
         #return jsonify({'prediction': prediction[0][0]})
     except Exception as e:
-        return jsonify({'error': str(e)})
+        return jsonify({'message': str(e)})
 
 
 # define endpoints for viewing all predictions
