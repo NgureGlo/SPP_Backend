@@ -5,6 +5,7 @@ from flask_bcrypt import Bcrypt
 from app.models import User
 from app.models import Course
 from app.models import Student, Predictions
+from sqlalchemy import exc
 
 
 @app.route('/', methods=['GET'])
@@ -114,6 +115,24 @@ def view_user():
     user= User.query.all()
     user_json = [User.serialize(record) for record in user]
     return jsonify({'data': user_json})
+
+
+# define endpoints for viewing a specific user
+@app.route('/view_user/<int:user_id>', methods=['GET'])
+def view_specificuser(user_id):
+    try:
+        user = User.query.get(user_id)
+        if user:
+            return jsonify({
+                'name': user.name,
+                'email': user.email
+                # Add other fields as needed
+            }), 200
+        else:
+            return jsonify({'error': 'User not found'}), 404
+    except exc.SQLAlchemyError as e:
+
+        return jsonify({'error': str(e)}), 500
 
 
 # define endpoints for deleting a user
@@ -362,7 +381,7 @@ def lecturer_predictions(lecturer_id):
     predictions = []
 
     for course in courses:
-        pred = Predictions.query.filter(Predictions.course_id == course.id)
+        pred = Predictions.query.filter(Predictions.course_code == course.course_code)
         preds = [Predictions.serialize(record) for record in pred]
         predictions += preds
 
@@ -370,11 +389,37 @@ def lecturer_predictions(lecturer_id):
 
 
 # define endpoints for viewing all predictions by course
-@app.route('/course_predictions/<int:course_id>', methods=['GET'])
-def course_predictions(course_id):
-
-    pred = Predictions.query.filter(Predictions.course_id == course_id)
+@app.route('/course_predictions', methods=['GET', 'POST'])
+def course_predictions():
+    data = request.json
+    course_code = str(data['course_code'])
+    pred = Predictions.query.filter(Predictions.course_code == course_code)
     preds = [Predictions.serialize(record) for record in pred]
 
     return jsonify({'data': preds})
 
+
+# define endpoints for viewing all predictions by student
+@app.route('/student_predictions', methods=['GET', 'POST'])
+def student_predictions():
+    data = request.json
+    student_reg_no = str(data['student_reg_no'])
+    pred = Predictions.query.filter(Predictions.student_reg_no == student_reg_no)
+    preds = [Predictions.serialize(record) for record in pred]
+    return jsonify({'data': preds})
+
+# define endpoints for viewing predictions by level
+@app.route('/courselevel_predictions', methods=['GET', 'POST'])
+def courselevel_predictions():
+    data = request.json
+    course_level = str(data['course_level'])
+    courses = Course.query.filter(Course.course_level == course_level)
+    print(courses.count())
+    predictions = []
+
+    for course in courses:
+        pred = Predictions.query.filter(Predictions.course_code == course.course_code)
+        preds = [Predictions.serialize(record) for record in pred]
+        predictions += preds
+
+    return jsonify({'data': predictions})
