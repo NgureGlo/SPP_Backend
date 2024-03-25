@@ -1,11 +1,14 @@
 from flask import flash, request, jsonify
+from flask import Flask
+import urllib.parse
 from app import app, db, loaded_model
 from email_validator import validate_email, EmailNotValidError
 from flask_bcrypt import Bcrypt
 from app.models import User
 from app.models import Course
 from app.models import Student, Predictions
-from sqlalchemy import exc
+from sqlalchemy import exc, and_
+import json
 
 
 @app.route('/', methods=['GET'])
@@ -13,12 +16,13 @@ def index():
     return jsonify({ 'message': 'welcome to flask app' })
 
 
-# define endpoints for registering admin
+# define endpoints for registering an admin
 @app.route('/register_admin', methods=['GET', 'POST'])
 def register_admin():
     data = request.json
 
     name = str(data['name'])
+    reg_no = str(data['reg_no'])
     email = str(data['email'])
     password = str(data['password'])
 
@@ -39,7 +43,7 @@ def register_admin():
 
     try:
 
-        user = User(role='Administrator', name=name, email=email, password=password)
+        user = User(role='Administrator', name=name, reg_no=reg_no, email=email, password=password)
         db.session.add(user)
         db.session.commit()
 
@@ -49,13 +53,14 @@ def register_admin():
         return jsonify({'error': str(e)}) 
 
 
-# define endpoints for registration
-@app.route('/register', methods=['GET', 'POST'])
-def register():
+# define endpoints for registering an educator
+@app.route('/register_educator', methods=['GET', 'POST'])
+def register_educator():
     data = request.json
 
     
     name = str(data['name'])
+    reg_no = str(data['reg_no'])
     email = str(data['email'])
     password = str(data['password'])
 
@@ -76,7 +81,45 @@ def register():
 
     try:
 
-        user = User(role='Educator', name=name, email=email, password=password)
+        user = User(role='Educator', name=name, reg_no=reg_no, email=email, password=password)
+        db.session.add(user)
+        db.session.commit()
+
+        return jsonify({'message': 'Your account has been created.'})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}) 
+
+
+# define endpoints for registering a student
+@app.route('/register_student', methods=['GET', 'POST'])
+def register_student():
+    data = request.json
+
+    
+    name = str(data['name'])
+    reg_no = str(data['reg_no'])
+    email = str(data['email'])
+    password = str(data['password'])
+
+    # Check if the email is valid
+    try:
+        v = validate_email(email)
+        email = v["email"]
+    except EmailNotValidError as e:
+        
+        return jsonify({'message': 'Invalid email address.'})
+
+    # Check password length
+    if len(password) < 6:
+        
+        return jsonify({'message': 'Password must be at least 6 characters long.'})
+    
+    bcrypt = Bcrypt()
+
+    try:
+
+        user = User(role='Student', name=name, reg_no=reg_no, email=email, password=password)
         db.session.add(user)
         db.session.commit()
 
@@ -124,6 +167,7 @@ def view_specificuser(user_id):
         user = User.query.get(user_id)
         if user:
             return jsonify({
+                'id':user.id,
                 'name': user.name,
                 'email': user.email
                 # Add other fields as needed
@@ -227,69 +271,133 @@ def delete_course(course_id):
     return jsonify ({'message': 'Course deleted successfully!'})
 
 
-# define endpoints for adding a student
+# # Define endpoint for adding a student to a course
+# @app.route('/add_student_to_course/<int:student_id>/<int:course_id>', methods=['POST'])
+# def add_student_to_course(student_id, course_id):
+#     try:
+#         # Check if the student exists in the system
+#         student = Student.query.get(student_id)
+#         if not student:
+#             return jsonify({'error': 'Student not found'}), 404
+        
+#         # Check if the course exists in the system
+#         course = Course.query.get(course_id)
+#         if not course:
+#             return jsonify({'error': 'Course not found'}), 404
+        
+#         # Add the student to the course
+#         course.students.append(student)
+#         db.session.commit()
+
+#         return jsonify({'message': 'Student added to course successfully'}), 200
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
+
+
+
+# define endpoints for adding a student to a course
 @app.route('/add_student', methods=['POST'])
 def add_student():
     data = request.json
-    print (str(data))
 
-    student_reg_no = str(data['student_reg_no'])
-    student_name = str(data['student_name'])
-    course_code = str(data['course_code'])
+    # Extract reg_no and course_code from request data
+    reg_no = data.get('reg_no')
+    course_code = data.get('course_code')
+
+    if not reg_no or not course_code:
+        return jsonify({'message': 'Please provide registration number and course code'}), 400
     
-    if student_reg_no and student_name and course_code:
-        student = Student(student_reg_no=student_reg_no, student_name=student_name, course_code=course_code)
+    # Check if the course exists
+    course = Course.query.filter_by(course_code=course_code).first()
+    if not course:
+        return jsonify({'message': 'Course not in records'}), 404
+
+    # Check if the student exists
+    student = User.query.filter_by(reg_no=reg_no).first()
+    if not student:
+        return jsonify({'message': 'Student not in records'}), 404
+
+    # Check if course connection already exists
+    student = Student.query.filter(and_(Student.reg_no == reg_no, Student.course_code == course_code)).first()
+    if student:
+        return jsonify({'message': 'The student is already enrolled in this course.'})
+
+    # Add student to the course
+    if reg_no and course_code:
+        student = Student(reg_no=reg_no, course_code=course_code)
         db.session.add(student)
         db.session.commit()
-
         return jsonify ({'message': 'Student added successfully!'})
-    
     else:
-
         return jsonify({'message': 'Unable to add Student. Please fill in all sections.'})
 
 
-# define endpoints for viewing students
+# define endpoints for viewing all students
 @app.route('/view_students', methods=['GET'])
 def view_students():
-    student= Student.query.all()
-    student_json = [Student.serialize(record) for record in student]
+    student = User.query.filter(User.role == 'Student')
+    student_json = [User.serialize(record) for record in student]
     return jsonify({'data': student_json})
 
 
+# define endpoints for viewing a specific student
+@app.route('/view_student/<int:user_id>', methods=['GET'])
+def view_specificstudent(user_id):
+    try:
+        user = User.query.get(user_id)
+        if user:
+            return jsonify(User.serialize(user)), 200
+        else:
+            return jsonify({'error': 'User not found'}), 404
+    except exc.SQLAlchemyError as e:
+        return jsonify({'error': str(e)}), 500    
+
+    
 # define endpoints for viewing a student added by a specific lecturer
 @app.route('/lecturer_students/<int:lecturer_id>', methods=['GET'])
 def lecturer_students(lecturer_id):
-
     courses = Course.query.filter(Course.added_by == lecturer_id)
     students = []
 
     for course in courses:
-        stud = Student.query.filter(Student.course_code == course.course_code)
-        studs = [Student.serialize(record) for record in stud]
-        students += studs
+        connections = Student.query.filter(Student.course_code == course.course_code)
+        for connection in connections:
+            users = User.query.filter(User.reg_no == connection.reg_no)
+            studs = [User.serialize(record) for record in users]
+            students += studs
 
-    return jsonify({'data': students})
+    unique_objects = set(json.dumps(obj, sort_keys=True) for obj in students)
+    unique_students = [json.loads(obj) for obj in unique_objects]
+
+    return jsonify({'data': unique_students})
 
 
-# define endpoints for deleting a student
+# Define endpoints for deleting a student from a course
 @app.route('/student/delete/<int:student_id>', methods=['POST'])
 def delete_student(student_id):
-    # Query the student to delete
-    student = Student.query.get_or_404(student_id)
+    try:
+        # Query the student to delete
+        student = Student.query.get(student_id)
 
-    # Delete the student from the database
-    db.session.delete(student)
-    db.session.commit()
+        if student:
+            # Delete the student from the database
+            db.session.delete(student)
+            db.session.commit()
 
-    # message to confirm deletion
-    return jsonify ({'message': 'Student deleted successfully!'})
+            # Message to confirm deletion
+            return jsonify({'message': 'Student deleted successfully!'}), 200
+        else:
+            # If the student is not found, return an error message
+            return jsonify({'error': 'Student not found'}), 404
+    except Exception as e:
+        # If there is an error, return an error message
+        return jsonify({'error': str(e)}), 500
 
 
 # define endpoints for viewing a student from a specific courses
-@app.route('/course_students/<int:course_id>', methods=['GET'])
-def course_students(course_id):
-    student= Student.query.filter(Student.course_id == course_id)
+@app.route('/course_students/<string:course_code>', methods=['GET'])
+def course_students(course_code):
+    student= Student.query.filter(Student.course_code == course_code)
     student_json = [Student.serialize(record) for record in student]
     return jsonify({'data': student_json})
 
@@ -302,7 +410,7 @@ def predict():
         # input data
         data = request.json
 
-        student_reg_no = str(data['student_reg_no'])
+        reg_no = str(data['reg_no'])
         course_code = str(data['course_code'])
         assignments_viewed = 0
         assignments_submitted = 0
@@ -324,15 +432,13 @@ def predict():
         if not course_list:
             return jsonify({'message': 'Course not in records'})
 
-        students = Student.query.filter(Student.student_reg_no == student_reg_no)
-        student_list = [Student.serialize(record) for record in students]
+        student_list = User.query.filter(User.reg_no == reg_no)
 
         if not student_list:
             return jsonify({'message': 'Student not in records'})
         
-        first_student = student_list[0]
-
-        if first_student["course_code"] != course_code:
+        connection_list = Student.query.filter(and_(Student.course_code == course_code, Student.reg_no == reg_no))
+        if not connection_list:
             return jsonify({'message':'Student not registered in this course'})
 
         expected_exam = loaded_model.predict([[
@@ -354,7 +460,7 @@ def predict():
         else:
             expected_grade = 'E'
 
-        predictions = Predictions(student_reg_no=student_reg_no, course_code=course_code, cat_1=cat_1, cat_2=cat_2, assignment=assignment, project=project, expected_exam=expected_exam, expected_total=expected_total, expected_grade=expected_grade)
+        predictions = Predictions(reg_no=reg_no, course_code=course_code, cat_1=cat_1, cat_2=cat_2, assignment=assignment, project=project, expected_exam=expected_exam, expected_total=expected_total, expected_grade=expected_grade)
         db.session.add(predictions)
         db.session.commit()
 
@@ -403,8 +509,8 @@ def course_predictions():
 @app.route('/student_predictions', methods=['GET', 'POST'])
 def student_predictions():
     data = request.json
-    student_reg_no = str(data['student_reg_no'])
-    pred = Predictions.query.filter(Predictions.student_reg_no == student_reg_no)
+    reg_no = str(data['reg_no'])
+    pred = Predictions.query.filter(Predictions.reg_no == reg_no)
     preds = [Predictions.serialize(record) for record in pred]
     return jsonify({'data': preds})
 
@@ -423,3 +529,4 @@ def courselevel_predictions():
         predictions += preds
 
     return jsonify({'data': predictions})
+
